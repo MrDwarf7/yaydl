@@ -41,12 +41,13 @@ pub struct VIDEO {
     mime: String,
 }
 
+// Stop the linter from blowing up because of inventory::collect! macro
+#[allow(non_local_definitions)]
 fn main() -> Result<()> {
     // Argument parsing:
     let args = Args::parse();
 
     inventory::collect!(&'static dyn definitions::SiteDefinition);
-    let mut site_def_found = false;
 
     let mut video = VIDEO {
         info: String::new(),
@@ -54,11 +55,12 @@ fn main() -> Result<()> {
         mime: String::new(),
     };
 
-    for handler in inventory::iter::<&dyn definitions::SiteDefinition> {
-        // "15:15 And he found a pair of eyes, scanning the directories for files."
-        // https://kingjamesprogramming.tumblr.com/post/123368869357/1515-and-he-found-a-pair-of-eyes-scanning-the
-        // ------------------------------------
+    // Used in loop below:
+    let mut printer = Printer::new();
+    let in_url = &args.url;
+    let mut site_def_found = false;
 
+    for handler in inventory::iter::<&dyn definitions::SiteDefinition> {
         // Find a known handler for <in_url>:
         if !handler.can_handle_url(in_url) {
             continue;
@@ -66,133 +68,30 @@ fn main() -> Result<()> {
 
         // This one is it.
         site_def_found = true;
-        println!("Fetching from {}.", handler.display_name());
+        printer
+            .lock()
+            .add(format!("Fetching from {}.", handler.display_name()))
+            .flush();
 
-        // The WebDriver port could be an argument from the command line
-        // or, to make life easier, from the environment variables
-        // ("YAYDL_WEBDRIVER_PORT") if not specified there. It defaults
-        // to 0.
-        let mut webdriverport: u16 = 0;
-        let webdriver_env = env::var("YAYDL_WEBDRIVER_PORT");
-        if args.webdriver.is_some() {
-            webdriverport = args.webdriver.unwrap();
-        } else if webdriver_env.is_ok() {
-            webdriverport = u16::from_str(&webdriver_env.unwrap_or("0".to_string())).unwrap_or(0);
-        }
-
-        if handler.web_driver_required() && webdriverport == 0 {
+        if handler.web_driver_required() && args.parse_webdriver() == 0 {
             // This handler would need a web driver, but none is supplied to yaydl.
-            println!("{} requires a web driver installed and running as described in the README. Please tell yaydl which port to use (yaydl --webdriver <PORT>) and try again.", handler.display_name());
+            printer.web_driver_req(handler.display_name());
             continue;
         }
 
-        let video_exists = handler.does_video_exist(&mut video, in_url, webdriverport)?;
-        if !video_exists {
-            println!("The video could not be found. Invalid link?");
-        } else {
-            if args.verbose {
-                println!("The requested video was found. Processing...");
-            }
+        let processing_result = process_video(
+            handler.borrow(),
+            &args,
+            &mut video,
+            in_url,
+            args.parse_webdriver(),
+        )?;
 
-            let video_title = handler.find_video_title(&mut video, in_url, webdriverport);
-            let vt = match video_title {
-                Err(_e) => "".to_string(),
-                Ok(title) => title,
-            };
+        check_result(processing_result, &args, &mut printer)?;
 
-            // Usually, we already find errors here.
-            if vt.is_empty() {
-                println!("The video title could not be extracted. Invalid link?");
-            } else {
-                if args.verbose {
-                    println!("Title: {}", vt);
-                }
 
-                let url = handler.find_video_direct_url(
-                    &mut video,
-                    in_url,
-                    webdriverport,
-                    args.onlyaudio,
-                )?;
-                let ext = handler.find_video_file_extension(
-                    &mut video,
-                    in_url,
-                    webdriverport,
-                    args.onlyaudio,
-                )?;
-
-                // Now let's download it:
-                let mut targetfile = format!(
-                    "{}.{}",
-                    vt.trim().replace(
-                        &['|', '\'', '\"', ':', '\'', '\\', '/', '?', '*'][..],
-                        r#""#
-                    ),
-                    ext
-                );
-
-                if let Some(in_targetfile) = args.outputfile {
-                    targetfile = in_targetfile.to_string();
-                }
-
-                if args.verbose {
-                    println!("Starting the download.");
-                }
-
-                let mut force_ffmpeg = false;
-                if handler.is_playlist(in_url, webdriverport).unwrap_or(false) {
-                    // Multi-part download.
-                    download::download_from_playlist(&url, &targetfile, args.verbose)?;
-                    force_ffmpeg = true;
-                } else {
-                    // Single-file download.
-                    download::download(&url, &targetfile)?;
-                }
-
-                // Convert the file if needed.
-                let outputext = args.audioformat;
-                if args.onlyaudio && ext != outputext || force_ffmpeg {
-                    if args.verbose {
-                        println!("Post-processing.");
-                    }
-
-                    let inpath = Path::new(&targetfile);
-                    let mut outpathbuf = PathBuf::from(&targetfile);
-
-                    if args.onlyaudio {
-                        // Convert to audio-only:
-                        outpathbuf.set_extension(outputext);
-                        let outpath = &outpathbuf.as_path();
-                        ffmpeg::to_audio(inpath, outpath);
-                    } else {
-                        // Convert from .ts to .mp4:
-                        outpathbuf.set_extension("mp4");
-                        let outpath = &outpathbuf.as_path();
-                        ffmpeg::ts_to_mp4(inpath, outpath);
-                    }
-
-                    // Get rid of the evidence.
-                    if !args.keeptempfile {
-                        fs::remove_file(&targetfile)?;
-                    }
-
-                    // Success!
-                    println!(
-                        "\"{}\" successfully downloaded.",
-                        outpathbuf
-                            .into_os_string()
-                            .into_string()
-                            .unwrap_or_else(|_| targetfile.to_string())
-                    );
-                } else {
-                    // ... just success!
-                    println!("\"{}\" successfully downloaded.", &targetfile);
-                }
-            }
-
-            // Stop looking for other handlers:
-            break;
-        }
+        // Stop looking for other handlers:
+        break;
     }
 
     if !site_def_found {
@@ -200,6 +99,70 @@ fn main() -> Result<()> {
             "yaydl could not find a site definition that would satisfy {}. Exiting.",
             in_url
         );
+    }
+
+    Ok(())
+}
+
+fn check_result(
+    processing_result: VideoProcessingResult,
+    args: &Args,
+    printer: &mut Printer<String>,
+) -> Result<()> {
+    match processing_result {
+        VideoProcessingResult::VideoNotFound => {
+            println!("The video could not be found. Invalid link?");
+        }
+        VideoProcessingResult::TitleNotFound => {
+            println!("The video title could not be extracted. Invalid link?");
+        }
+        VideoProcessingResult::ReadyToProcess(ready) => {
+            if args.verbose {
+                println!("Starting the download.");
+            }
+
+            let url = ready.url.clone();
+            let targetfile = TargetFile::from(ready);
+
+            match targetfile.force_ffmpeg {
+                true => {
+                    targetfile.download_from_playlist(&url, args.verbose)?;
+                }
+                false => {
+                    targetfile.download(&url)?;
+                }
+            }
+
+            if (args.onlyaudio && targetfile.target_ext != *args.audioformat)
+                || targetfile.force_ffmpeg
+            {
+                if args.verbose {
+                    println!("Post-processing.");
+                }
+
+                let mut paths_for = InputOutputPaths::from(&targetfile);
+
+                paths_for.to_audio_mut(args.onlyaudio, args.audioformat.clone());
+
+                if !args.keeptempfile {
+                    std::fs::remove_file(&targetfile.target_filename)?;
+                }
+
+                printer
+                    .add(format!(
+                        "\"{}\" successfully downloaded.",
+                        paths_for.output_to_string()
+                    ))
+                    .flush();
+            } else {
+                printer
+                    .add(format!(
+                        "\"{}\" successfully downloaded.",
+                        &targetfile.target_filename
+                    ))
+                    .flush();
+            }
+        }
     }
 
     Ok(())
