@@ -16,54 +16,22 @@
 // Yet Another Youtube Down Loader
 // - main.rs file -
 
-use anyhow::Result;
-use clap::Parser;
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
-
+mod args;
 mod definitions;
 mod download;
 mod ffmpeg;
 mod handlers;
+mod prelude;
+mod processor;
 
-#[derive(Parser)]
-#[clap(version, about = "Yet Another Youtube Down Loader", long_about = None)]
-struct Args {
-    #[clap(long = "only-audio", short = 'x', help = "Only keeps the audio stream")]
-    onlyaudio: bool,
+use crate::args::Args;
+use crate::prelude::{from_env_proxy, Printer};
+use crate::processor::{process_video, VideoProcessingResult};
+use anyhow::Result;
+use clap::Parser;
+use processor::{InputOutputPaths, TargetFile};
+use std::borrow::Borrow;
 
-    #[clap(
-        long = "keep-temp-file",
-        short = 'k',
-        help = "Keeps all downloaded data even with --only-audio"
-    )]
-    keeptempfile: bool,
-
-    #[clap(long, short = 'v', help = "Talks more while the URL is processed")]
-    verbose: bool,
-
-    #[clap(
-        long = "audio-format",
-        short = 'f',
-        help = "Sets the target audio format (only if --only-audio is used).\nSpecify the file extension here.",
-        default_value = "mp3"
-    )]
-    audioformat: String,
-
-    #[clap(long = "output", short = 'o', help = "Sets the output file name")]
-    outputfile: Option<String>,
-
-    #[clap(long, help = "The port of your web driver (required for some sites)")]
-    webdriver: Option<u16>,
-
-    #[clap(help = "Sets the input URL to use", index = 1)]
-    url: String,
-}
-
-// #[derive(Debug)]
 // usage:
 // let v = VIDEO{info: String::new(), title:String::new(), mime:String::new()};
 // println!("{:#?}",v);
@@ -77,7 +45,6 @@ fn main() -> Result<()> {
     // Argument parsing:
     let args = Args::parse();
 
-    let in_url = &args.url;
     inventory::collect!(&'static dyn definitions::SiteDefinition);
     let mut site_def_found = false;
 
