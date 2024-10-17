@@ -26,7 +26,7 @@ use crate::VIDEO;
 
 fn resolve_js_redirect(url: &str) -> String {
     // VOE tends to redirect. Find the actual target URL:
-    let req = ureq::get(&url).call().unwrap();
+    let req = ureq::get(url).call().unwrap();
     let body = req.into_string().unwrap();
 
     let re_redirect = Regex::new(r"window.location.href = '(?P<URL>.*?)'").unwrap();
@@ -45,7 +45,7 @@ fn get_video_info(video: &mut VIDEO, url: &str) -> Result<Html> {
     if video.info.is_empty() {
         // We need to fetch the video information first.
         // It will contain the whole body for now.
-        let req = ureq::get(&resolve_js_redirect(&url)).call()?;
+        let req = ureq::get(&resolve_js_redirect(url)).call()?;
         let body = req.into_string()?;
 
         video.info = body;
@@ -63,7 +63,7 @@ impl SiteDefinition for VoeHandler {
         // We need to catch both VOE.sx and whatever redirectors it uses.
         // As main.rs hasn't built the VIDEO struct here yet, we'll parse
         // the resulting website a first time...
-        let req = ureq::get(&resolve_js_redirect(&url)).call().unwrap();
+        let req = ureq::get(&resolve_js_redirect(url)).call().unwrap();
         let body = req.into_string().unwrap();
 
         // If the body contains a VOEPlayer, we're in it.
@@ -118,7 +118,7 @@ impl SiteDefinition for VoeHandler {
         Ok(!video.info.is_empty())
     }
 
-    fn display_name<'a>(&'a self) -> String {
+    fn display_name(&self) -> String {
         "Voe".to_string()
     }
 
@@ -132,7 +132,7 @@ impl SiteDefinition for VoeHandler {
         Ok("mp4".to_string())
     }
 
-    fn web_driver_required<'a>(&'a self) -> bool {
+    fn web_driver_required(&self) -> bool {
         false
     }
 }

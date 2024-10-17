@@ -105,7 +105,7 @@ impl SiteDefinition for SpankbangHandler {
         Ok(!video.info.is_empty())
     }
 
-    fn display_name<'a>(&'a self) -> String {
+    fn display_name(&self) -> String {
         "Spankbang".to_string()
     }
 
@@ -119,7 +119,7 @@ impl SiteDefinition for SpankbangHandler {
         Ok("mp4".to_string())
     }
 
-    fn web_driver_required<'a>(&'a self) -> bool {
+    fn web_driver_required(&self) -> bool {
         false
     }
 }
@@ -143,7 +143,7 @@ fn url_filename(url: String) -> String {
     };
 
     // path = /12345/video/description+for+this+video
-    let vec: Vec<&str> = path.as_str().split("/").map(|s| s).collect();
+    let vec: Vec<&str> = path.as_str().split("/").collect();
     let id_5char = vec[1]; // = 12345
     let description = vec[3]; // use for base filename, = description+for+this+video
 
@@ -154,32 +154,43 @@ fn url_filename(url: String) -> String {
         base_filename = format!("{}...-{}", shorten, id_5char); // concat using shorten description
     }
 
-    return windows_filename(linux_filename(base_filename));
+    windows_filename(linux_filename(base_filename))
 }
 
 // replace invalid linux chars with _ underscore
 fn linux_filename(in_filename: String) -> String {
-    let out_filename = format!(
-        "{}",
-        in_filename.trim().replace(
-            &['|', '\'', '\"', ':', '\'', '\\', '/'][..], // '"', also works for quote char
-            r#"_"#
-        )
-    );
+    // let out_filename = format!(
+    //     "{}",
+    //     in_filename.trim().replace(
+    //         &['|', '\'', '\"', ':', '\'', '\\', '/'][..], // '"', also works for quote char
+    //         r#"_"#
+    //     )
+    // );
 
-    return out_filename;
+    in_filename
+        .trim()
+        .replace(
+            &['|', '\'', '\"', ':', '\'', '\\', '/'][..], // '"', also works for quote char
+            r#"_"#,
+        )
+        .to_string()
 }
 
 // replace invalid windows chars with _ underscore
 fn windows_filename(in_filename: String) -> String {
-    let out_filename = format!(
-        "{}",
-        in_filename
-            .trim()
-            // also replace newline char
-            // replacing plus '+' char is specific to spankbang
-            .replace(&['<', '>', ':', '?', '*', '\n', '+'][..], r#"_"#) // replace with underscore char
-    );
+    // let out_filename = format!(
+    //     "{}",
+    //     in_filename
+    //         .trim()
+    //         // also replace newline char
+    //         // replacing plus '+' char is specific to spankbang
+    //         .replace(&['<', '>', ':', '?', '*', '\n', '+'][..], r#"_"#) // replace with underscore char
+    // );
 
-    return out_filename;
+    in_filename
+        .trim()
+        // also replace newline char
+        // replacing plus '+' char is specific to spankbang
+        .replace(&['<', '>', ':', '?', '*', '\n', '+'][..], r#"_"#)
+        .to_string()
 }

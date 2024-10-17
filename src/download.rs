@@ -33,9 +33,8 @@ struct DownloadProgress<'a, R> {
 
 impl<R: Read> Read for DownloadProgress<'_, R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.read(buf).map(|n| {
+        self.inner.read(buf).inspect(|&n| {
             self.progress_bar.inc(n as u64);
-            n
         })
     }
 }
@@ -43,7 +42,7 @@ impl<R: Read> Read for DownloadProgress<'_, R> {
 pub fn download_from_playlist(url: &str, filename: &str, verbose: bool) -> Result<()> {
     // Download the playlist file into the temporary directory:
     if verbose {
-        println!("{}", "Found a playlist. Fetching ...");
+        println!("Found a playlist. Fetching ...");
     }
 
     let mut url = Url::parse(url)?;
@@ -59,20 +58,21 @@ pub fn download_from_playlist(url: &str, filename: &str, verbose: bool) -> Resul
     let playlist_text = request.call()?.into_string()?;
 
     if verbose {
-        println!("{}", "Parsing ...");
+        println!("Parsing ...");
     }
 
     // Parse the playlist:
-    let playlist = m3u8_rs::parse_media_playlist(&playlist_text.as_bytes())
+    let playlist = m3u8_rs::parse_media_playlist(playlist_text.as_bytes())
         .finish()
         .unwrap();
 
     // Grab and concatenate the segments from the playlist:
-    let file = Path::new(&filename);
+    // let file = Path::new(&filename);
+
     let mut dest = fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&file)?;
+        .open(filename)?;
 
     // Display a progress bar:
     let total_cnt = playlist.1.segments.len() as u64;
@@ -162,7 +162,7 @@ pub fn download(url: &str, filename: &str) -> Result<()> {
     let mut dest = fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&file)?;
+        .open(file)?;
 
     let _ = copy(&mut source, &mut dest)?;
 

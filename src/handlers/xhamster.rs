@@ -54,6 +54,40 @@ fn get_video_info(video: &mut VIDEO, url: &str) -> Result<bool> {
     Ok(true)
 }
 
+fn parse_playlist(document: &Html, agent: &ureq::Agent) -> Result<String> {
+    let url_selector = Selector::parse(r#"link[rel="preload"][as="fetch"]"#).unwrap();
+    let url_contents = document
+        .select(&url_selector)
+        .next()
+        .unwrap()
+        .value()
+        .attr("href")
+        .unwrap();
+    // let url_contents = url_elem.value().attr("href").unwrap();
+
+    let mut playlist_url = Url::parse(url_contents)?;
+    let get = agent.get(playlist_url.as_str());
+    let binding = get.call()?.into_string()?;
+    let playlist_text_b = binding.as_bytes();
+
+    // Parse the playlist:
+    let playlist = m3u8_rs::parse_media_playlist(playlist_text_b)
+        .finish()
+        .unwrap();
+
+    // Grab the last (= best) segment from the media playlist to find the video "playlist"
+    // (which contains all segments of the video):
+    let video_uri = &playlist.1.segments.last().ok_or("").unwrap().uri;
+
+    playlist_url
+        .path_segments_mut()
+        .unwrap()
+        .pop()
+        .push(video_uri);
+
+    Ok(playlist_url.to_string())
+}
+
 // Implement the site definition:
 struct XHamsterHandler;
 impl SiteDefinition for XHamsterHandler {
@@ -95,41 +129,55 @@ impl SiteDefinition for XHamsterHandler {
     ) -> Result<String> {
         let _not_used = get_video_info(video, url)?;
         let video_info_html = Html::parse_document(video.info.as_str());
-        let mut agent = ureq::agent();
 
-        let url_p = Url::parse(url)?;
-        if let Some(env_proxy) = env_proxy::for_url(&url_p).host_port() {
-            // Use a proxy:
-            let proxy = ureq::Proxy::new(format!("{}:{}", env_proxy.0, env_proxy.1));
-            agent = ureq::AgentBuilder::new().proxy(proxy.unwrap()).build();
-        }
+        let agent = match crate::from_env_proxy(url) {
+            Some(agent) => agent,
+            None => ureq::agent(),
+        };
+
+        // let mut agent = ureq::agent();
+        // let url_p = Url::parse(url)?;
+        // if let Some(env_proxy) = env_proxy::for_url(&url_p).host_port() {
+        //     // Use a proxy:
+        //     let proxy = ureq::Proxy::new(format!("{}:{}", env_proxy.0, env_proxy.1));
+        //     agent = ureq::AgentBuilder::new().proxy(proxy.unwrap()).build();
+        // }
 
         // Find the playlist first:
-        let url_selector = Selector::parse(r#"link[rel="preload"][as="fetch"]"#).unwrap();
-        let url_elem = video_info_html.select(&url_selector).next().unwrap();
-        let url_contents = url_elem.value().attr("href").unwrap();
+        parse_playlist(&video_info_html, &agent)
 
-        let mut playlist_url = Url::parse(url_contents)?;
-        let request = agent.get(playlist_url.as_str());
-        let playlist_text = request.call()?.into_string()?;
-
-        // Parse the playlist:
-        let playlist = m3u8_rs::parse_media_playlist(&playlist_text.as_bytes())
-            .finish()
-            .unwrap();
-
-        // Grab the last (= best) segment from the media playlist to find the video "playlist"
-        // (which contains all segments of the video):
-        let video_uri = &playlist.1.segments.last().ok_or("").unwrap().uri;
-
-        // xHamster uses relative URIs in its playlists, so we'll only need to replace
-        // the last URL segment:
-        playlist_url
-            .path_segments_mut()
-            .unwrap()
-            .pop()
-            .push(video_uri);
-        Ok(playlist_url.to_string())
+        // let url_selector = Selector::parse(r#"link[rel="preload"][as="fetch"]"#).unwrap();
+        // let url_contents = video_info_html
+        //     .select(&url_selector)
+        //     .next()
+        //     .unwrap()
+        //     .value()
+        //     .attr("href")
+        //     .unwrap();
+        // // let url_contents = url_elem.value().attr("href").unwrap();
+        //
+        // let mut playlist_url = Url::parse(url_contents)?;
+        // let get = agent.get(playlist_url.as_str());
+        // let binding = get.call()?.into_string()?;
+        // let playlist_text_b = binding.as_bytes();
+        //
+        // // Parse the playlist:
+        // let playlist = m3u8_rs::parse_media_playlist(playlist_text_b)
+        //     .finish()
+        //     .unwrap();
+        //
+        // // Grab the last (= best) segment from the media playlist to find the video "playlist"
+        // // (which contains all segments of the video):
+        // let video_uri = &playlist.1.segments.last().ok_or("").unwrap().uri;
+        //
+        // // xHamster uses relative URIs in its playlists, so we'll only need to replace
+        // // the last URL segment:
+        // playlist_url
+        //     .path_segments_mut()
+        //     .unwrap()
+        //     .pop()
+        //     .push(video_uri);
+        // Ok(playlist_url.to_string())
     }
 
     fn does_video_exist<'a>(
@@ -142,7 +190,7 @@ impl SiteDefinition for XHamsterHandler {
         Ok(!video.info.is_empty())
     }
 
-    fn display_name<'a>(&'a self) -> String {
+    fn display_name(&self) -> String {
         "xHamster".to_string()
     }
 
@@ -156,7 +204,7 @@ impl SiteDefinition for XHamsterHandler {
         Ok("ts".to_string())
     }
 
-    fn web_driver_required<'a>(&'a self) -> bool {
+    fn web_driver_required(&self) -> bool {
         false
     }
 }

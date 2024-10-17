@@ -108,7 +108,7 @@ impl SiteDefinition for WatchMDHHandler {
         Ok(!video.info.is_empty())
     }
 
-    fn display_name<'a>(&'a self) -> String {
+    fn display_name(&self) -> String {
         "WatchMDH".to_string()
     }
 
@@ -122,7 +122,7 @@ impl SiteDefinition for WatchMDHHandler {
         Ok("mp4".to_string())
     }
 
-    fn web_driver_required<'a>(&'a self) -> bool {
+    fn web_driver_required(&self) -> bool {
         true
     }
 }

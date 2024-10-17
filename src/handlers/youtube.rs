@@ -22,8 +22,10 @@ use crate::VIDEO;
 use anyhow::Result;
 use regex::Regex;
 use scraper::{Html, Selector};
-use std::env;
-use url::Url;
+use std::{
+    env,
+    sync::{LazyLock, RwLock},
+};
 
 // Starting with yaydl 0.13.0, this handler uses Invidious instead
 // of YouTube. In no way am I interested in playing cat and mouse
@@ -32,6 +34,10 @@ use url::Url;
 // The environment variable YAYDL_INVIDIOUS_INSTANCE can be used to
 // define the instance to use, otherwise, yaydl defaults to this:
 const INVIDIOUS_INSTANCE: &str = "https://invidious.privacyredirect.com";
+
+static ID_REGEX: LazyLock<RwLock<Regex>> = LazyLock::new(|| {
+    std::sync::RwLock::new(Regex::new(r"(?:v=|\.be/|shorts/)(.*?)(&.*)*$").unwrap())
+});
 
 fn get_invidious_instance() -> String {
     let invidious_env = env::var("YAYDL_INVIDIOUS_INSTANCE");
@@ -42,35 +48,64 @@ fn get_invidious_instance() -> String {
     }
 }
 
+// PERF: This could just be an Into<String> or Into<Str> or Into<Url> or AsRef<str> or something.
+// and replace the usage of the function with video.info.as_str() or something.
+// and you don't have a large struct being parsed & no need to be mutable either
+//
+// fn get_video_info(video: impl Into<String> , url: &str) -> Result<Html> {
+// let video = video.into();
+// if video.is_empty() {
+//
+// etc..
+//
 fn get_video_info(video: &mut VIDEO, url: &str) -> Result<Html> {
     if video.info.is_empty() {
         // We need to fetch the video information first.
         // It will contain the whole body for now.
         // Exchange the URL -> Invidious:
-        let id_regex = Regex::new(r"(?:v=|\.be/|shorts/)(.*?)(&.*)*$").unwrap();
-        let id = id_regex.captures(url).unwrap().get(1).unwrap().as_str();
+        let id = ID_REGEX
+            .read()
+            .unwrap()
+            .captures(url)
+            .unwrap()
+            .get(1)
+            .unwrap()
+            .as_str();
+        // let id = id_regex.captures(url).unwrap().get(1).unwrap().as_str();
 
-        let invidious_url = format!("{}/watch?v={}", get_invidious_instance(), id);
-        let local_url = invidious_url.to_owned();
+        let local_url = format!("{}/watch?v={}", get_invidious_instance(), id).to_owned();
 
         // Initialize the agent:
-        let mut agent = ureq::agent();
-        let url_p = Url::parse(&local_url)?;
+        // let mut agent = ureq::agent();
+        // if let Some(env_proxy) = env_proxy::for_url(&Url::parse(&local_url)?).host_port() {
+        //     // if let Some(env_proxy) = env_proxy::for_url(&url_p).host_port() {
+        //     // Use a proxy:
+        //     let proxy = ureq::Proxy::new(format!("{}:{}", env_proxy.0, env_proxy.1));
+        //     agent = ureq::AgentBuilder::new().proxy(proxy.unwrap()).build();
+        // }
 
-        if let Some(env_proxy) = env_proxy::for_url(&url_p).host_port() {
-            // Use a proxy:
-            let proxy = ureq::Proxy::new(format!("{}:{}", env_proxy.0, env_proxy.1));
-            agent = ureq::AgentBuilder::new().proxy(proxy.unwrap()).build();
-        }
-
-        let req = agent.get(&local_url).call()?;
-        let body = req.into_string()?;
-        video.info.push_str(body.as_str());
+        video.info.push_str(
+            crate::from_env_proxy(&local_url)
+                .unwrap_or(ureq::agent())
+                .get(&local_url)
+                .call()?
+                .into_string()?
+                .as_str(),
+        );
     }
-
-    let d = Html::parse_document(&video.info);
-    Ok(d)
+    Ok(Html::parse_document(&video.info))
 }
+
+// pub fn from_env_proxy(url: impl AsRef<str>) -> Option<ureq::Agent> {
+//     if let Some(env_proxy) = env_proxy::for_url(&Url::parse(url.as_ref()).unwrap()).host_port() {
+//         // Use a proxy:
+//         let proxy = ureq::Proxy::new(format!("{}:{}", env_proxy.0, env_proxy.1));
+//         let agent = ureq::AgentBuilder::new().proxy(proxy.unwrap()).build();
+//         Some(agent)
+//     } else {
+//         None
+//     }
+// }
 
 // Implement the site definition:
 struct YouTubeHandler;
@@ -116,6 +151,8 @@ impl SiteDefinition for YouTubeHandler {
         let quality_selector = Selector::parse(r#"source"#).unwrap();
         let quality_iter = video_info.select(&quality_selector);
 
+        // Please - we have language tools to not have to do these things in Rust;
+        // mutability is (esp when a single variable and very generally) a code smell.
         let mut last_vq: String = String::new();
 
         for source in quality_iter {
@@ -161,7 +198,7 @@ impl SiteDefinition for YouTubeHandler {
         Ok(!video.info.is_empty())
     }
 
-    fn display_name<'a>(&'a self) -> String {
+    fn display_name(&self) -> String {
         "Invidious".to_string()
     }
 
@@ -183,7 +220,7 @@ impl SiteDefinition for YouTubeHandler {
         Ok(ext.to_string())
     }
 
-    fn web_driver_required<'a>(&'a self) -> bool {
+    fn web_driver_required(&self) -> bool {
         false
     }
 }

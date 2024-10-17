@@ -34,6 +34,7 @@ pub fn to_audio(inputfile: &Path, outputfile: &Path) {
         .expect("Please install ffmpeg to convert the file into audio.");
 }
 
+#[allow(unused)]
 pub fn ts_to_mp4(inputfile: &Path, outputfile: &Path) {
     Command::new("ffmpeg")
         .arg("-i")

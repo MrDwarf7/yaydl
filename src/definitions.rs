@@ -63,8 +63,8 @@ pub trait SiteDefinition: Sync + Send {
     ) -> Result<String>;
 
     // returns the name of the site (e.g. "YouTube").
-    fn display_name<'a>(&'a self) -> String;
+    fn display_name(&self) -> String;
 
     // true, if this site needs a web driver.
-    fn web_driver_required<'a>(&'a self) -> bool;
+    fn web_driver_required(&self) -> bool;
 }

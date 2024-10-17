@@ -30,7 +30,7 @@ fn get_video_info(video: &mut VIDEO, url: &str) -> Result<Html> {
     if video.info.is_empty() {
         // We need to fetch the video information first.
         // It will contain the whole body for now.
-        let req = ureq::get(&url).call()?;
+        let req = ureq::get(url).call()?;
         let body = req.into_string()?;
         video.info.push_str(body.as_str());
     }
@@ -100,7 +100,7 @@ impl SiteDefinition for VivoHandler {
         Ok(!video.info.is_empty())
     }
 
-    fn display_name<'a>(&'a self) -> String {
+    fn display_name(&self) -> String {
         "VIVO".to_string()
     }
 
@@ -114,7 +114,7 @@ impl SiteDefinition for VivoHandler {
         Ok("mp4".to_string())
     }
 
-    fn web_driver_required<'a>(&'a self) -> bool {
+    fn web_driver_required(&self) -> bool {
         false
     }
 }
