@@ -89,66 +89,6 @@ fn main() -> Result<()> {
 
         check_result(processing_result, &args, &mut printer)?;
 
-        // match processing_result {
-        //     VideoProcessingResult::VideoNotFound => {
-        //         println!("The video could not be found. Invalid link?");
-        //     }
-        //     VideoProcessingResult::TitleNotFound => {
-        //         println!("The video title could not be extracted. Invalid link?");
-        //     }
-        //     VideoProcessingResult::ReadyToProcess(ready) => {
-        //         if args.verbose {
-        //             println!("Starting the download.");
-        //         }
-        //
-        //         let url = ready.url.clone();
-        //         let targetfile = TargetFile::from(ready);
-        //
-        //         match targetfile.force_ffmpeg {
-        //             true => {
-        //                 download::download_from_playlist(
-        //                     &url,
-        //                     &targetfile.target_filename,
-        //                     args.verbose,
-        //                 )?;
-        //             }
-        //             false => {
-        //                 download::download(&url, &targetfile.target_filename)?;
-        //             }
-        //         }
-        //
-        //         if (args.onlyaudio && targetfile.target_ext != *args.audioformat)
-        //             || targetfile.force_ffmpeg
-        //         {
-        //             if args.verbose {
-        //                 println!("Post-processing.");
-        //             }
-        //
-        //             let mut paths_for = InputOutputPaths::from(&targetfile);
-        //
-        //             paths_for.to_audio_mut(args.onlyaudio, args.audioformat);
-        //
-        //             if !args.keeptempfile {
-        //                 std::fs::remove_file(&targetfile.target_filename)?;
-        //             }
-        //
-        //             printer
-        //                 .add(format!(
-        //                     "\"{}\" successfully downloaded.",
-        //                     paths_for.output_to_string()
-        //                 ))
-        //                 .flush();
-        //         } else {
-        //             printer
-        //                 .add(format!(
-        //                     "\"{}\" successfully downloaded.",
-        //                     &targetfile.target_filename
-        //                 ))
-        //                 .flush();
-        //         }
-        //     }
-        // }
-
         // Stop looking for other handlers:
         break;
     }
